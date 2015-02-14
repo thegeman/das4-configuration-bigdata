@@ -1,0 +1,63 @@
+#!/bin/bash
+
+ERR_NO_RESERVATION=1
+ERR_TOO_MANY_RESERVATIONS=2
+ERR_RESERVATION_NOT_FOUND=3
+ERR_UNKNOWN_STATE=4
+
+# Extract a list of node IP addresses from a reservation
+# Arg.1: reservation ID
+fetch-reservation() {
+	# Fetch the line of output from preserve that describes this reservation
+	reservation=$(preserve -llist | tail -n +4 | grep -E "^$1[[:space:]]")
+
+	# Ensure that the reservation exists
+	if [ "$reservation" = "" ]; then
+		echo "Could not find reservation for ID: $1." >&2
+		echo "Check if the reservation exists and that the ID is correct." >&2
+		exit $ERR_RESERVATION_NOT_FOUND
+	fi
+
+	# Extract the state of the reservation and make sure it is allocated
+	state=$(echo "$reservation" | cut -f7)
+	if [ ! "$state" = "r" ]; then
+		echo "Reservation $1 has an unknown state of \"$state\"." >&2
+		exit $ERR_UNKNOWN_STATE
+	fi
+
+	# Extract the IP addresses of the nodes
+	echo $reservation | grep -o -E "node[0-9]*" | sed 's/node\([0-9]\)/10.141.\1./g' | sed 's/10\.141\.\([0-9]\)\.0*\([0-9][0-9]*\)$/10.141.\1.\2/g'
+}
+
+# Search the available reservations for one by the user
+search-reservation() {
+	# Get a list of reservation IDs for this user
+	reservations=$(preserve -llist | grep $USER | cut -f1)
+
+	# Count the number of reservations
+	noreservations=$(echo $reservations | wc -w)
+
+	# Exit if there are no reservations
+	if [ "$noreservations" = "0" ]; then
+		echo "Could not find any node reservation for user $USER." >&2
+		echo "Verify that you have made a reservation or pass a reservation ID as argument to this script." >&2
+		exit $ERR_NO_RESERVATION
+	fi
+	
+	# Exit if there is more than one reservation
+	if [ ! "$noreservations" = "1" ]; then
+		echo "Found $noreservations node reservations, expected only 1." >&2
+		echo "Pass the reservation ID corresponding to the desired nodes to this script." >&2
+		exit $ERR_TOO_MANY_RESERVATIONS
+	fi
+
+	# Get the list of nodes corresponding to the found reservation
+	fetch-reservation $reservations
+}
+
+if [ "$#" -ge 1 ]; then
+	fetch-reservation $1
+else
+	search-reservation
+fi
+exit 0
