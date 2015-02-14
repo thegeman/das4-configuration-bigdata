@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Parse the command line
+if [ "$#" -ne "1" ]; then
+	echo "Usage: ${BASH_SOURCE[0]} <zookeeper-dir>" >&2
+	exit 1
+fi
+export ZOOKEEPER_HOME="$1"
+
+# Sanity check the specified directory
+if [ ! -f "$ZOOKEEPER_HOME/bin/zkServer.sh" ]; then
+	echo "Invalid setting for ZooKeeper directory: $ZOOKEEPER_HOME" >&2
+	echo "Could not find \"$ZOOKEEPER_HOME/bin/zkServer.sh\"" >&2
+	exit 2
+fi
+
+# Copy configuration from template directory to ZooKeeper configuration path
+TEMPLATE_DIR="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")")/zookeeper-3.4"
+sed "s/USERNAME/$USER/g" "$TEMPLATE_DIR/conf/zoo.cfg.template" > "$ZOOKEEPER_HOME/conf/zoo.cfg"
+
+# Read master address
+echo "Enter IP or hostname of master:"
+read MASTER
+
+# Prepare master node
+ssh "$MASTER" "rm -rf /local/$USER/zookeeper; mkdir -p /local/$USER/zookeeper"
+
+# Start ZooKeeper
+ssh "$MASTER" "$ZOOKEEPER_HOME/bin/zkServer.sh start"
